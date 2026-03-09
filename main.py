@@ -26,215 +26,284 @@ from src.agent.loader import load_sample_data
 from src.agent.splitter import split_by_recursive
 from src.agent.vectorstore import create_vectorstore
 from src.agent.retriever import create_retriever
-from src.agent.rag_chain import create_rag_chain, invoke_rag
+from src.agent.rag_chain import create_rag_chain
+
+
+# 全局变量存储 RAG 系统组件
+class RAGSystem:
+    def __init__(self):
+        self.documents = None
+        self.chunks = None
+        self.vectorstore = None
+        self.retriever = None
+        self.model = None
+        self.rag_chain = None
+        self._initialized = False
+
+    def ensure_init(self):
+        """确保已初始化"""
+        if not self._initialized:
+            init_rag_system()
+        return self
+
+    @property
+    def is_ready(self):
+        return self._initialized
+
+
+rag_system = RAGSystem()
 
 
 def print_section(title: str):
     """打印分隔标题"""
-    print(f"\n{'=' * 60}")
+    print(f"\n{'─' * 50}")
     print(f"  {title}")
-    print('=' * 60)
+    print('─' * 50)
 
 
-def demo_basic_rag():
-    """演示基本的 RAG 流程"""
-    print_section("1. 初始化 LLM 模型")
-    model = get_model()
-    print(f"模型初始化成功: {model.model_name}")
+def init_rag_system():
+    """初始化 RAG 系统"""
+    print_section("初始化 RAG 系统")
 
-    # Step 2: 加载文档
-    print_section("2. 加载文档")
-    print("加载示例数据（关于 RAG 知识的文档）...")
-    documents = load_sample_data()
-    print(f"成功加载 {len(documents)} 个文档")
+    # 加载文档
+    print("📄 加载文档...")
+    rag_system.documents = load_sample_data()
+    print(f"   已加载 {len(rag_system.documents)} 个文档")
 
-    # 打印每个文档的基本信息
-    for i, doc in enumerate(documents):
-        print(f"\n文档 {i+1}:")
-        print(f"  来源: {doc.metadata.get('source', 'unknown')}")
-        print(f"  内容长度: {len(doc.page_content)} 字符")
-        print(f"  内容预览: {doc.page_content[:100].strip()}...")
-
-    # Step 3: 文本分块
-    print_section("3. 文本分块")
-    print("将文档分割成较小的片段...")
-    chunks = split_by_recursive(
-        documents,
-        chunk_size=300,
-        chunk_overlap=50,
+    # 文本分块
+    print("✂️ 文本分块...")
+    rag_system.chunks = split_by_recursive(
+        rag_system.documents,
+        chunk_size=500,
+        chunk_overlap=100,
     )
-    print(f"分割完成，共 {len(chunks)} 个文本块")
+    print(f"   已分为 {len(rag_system.chunks)} 个片段")
 
-    # 打印前几个块的信息
-    for i, chunk in enumerate(chunks[:3]):
-        print(f"\n块 {i+1} (来源: {chunk.metadata.get('source', 'unknown')}):")
-        print(f"  长度: {len(chunk.page_content)} 字符")
-        print(f"  内容: {chunk.page_content[:80].strip()}...")
-
-    # Step 4: 创建向量存储
-    print_section("4. 创建向量存储")
-    print("将文本块转换为向量并存储...")
-    vectorstore = create_vectorstore(
-        chunks,
+    # 向量存储
+    print("💾 创建向量索引（首次运行需下载模型，请耐心等待）...")
+    rag_system.vectorstore = create_vectorstore(
+        rag_system.chunks,
         collection_name="rag_demo",
-        persist_directory=None,  # 使用内存存储
+        persist_directory=None,
     )
-    print("向量存储创建成功!")
 
-    # Step 5: 创建检索器
-    print_section("5. 创建检索器")
-    print("配置检索参数...")
-    retriever = create_retriever(
-        vectorstore,
-        search_type="similarity",
-        k=2,
-    )
-    print("检索器创建成功!")
+    # 检索器
+    rag_system.retriever = create_retriever(rag_system.vectorstore, search_type="similarity", k=2)
 
-    # Step 6: 构建 RAG 链
-    print_section("6. 构建 RAG 链")
-    print("将检索器和 LLM 结合成完整的 RAG 链...")
-    rag_chain = create_rag_chain(retriever, model)
-    print("RAG 链构建成功!")
+    # LLM
+    print("🤖 初始化 LLM...")
+    rag_system.model = get_model()
 
-    # Step 7: 问答演示
-    print_section("7. RAG 问答演示")
+    # RAG 链
+    rag_system.rag_chain = create_rag_chain(rag_system.retriever, rag_system.model)
 
-    # 测试问题
-    test_questions = [
-        "什么是 RAG？",
-        "LangChain 有哪些 RAG 组件？",
-        "RAG 的最佳实践有哪些？",
-    ]
+    rag_system._initialized = True
+    print("   ✅ RAG 系统就绪!")
+    return rag_system
 
-    for question in test_questions:
-        print(f"\n问题: {question}")
+
+def show_document_list():
+    """显示文档列表供用户选择"""
+    rag_system.ensure_init()
+
+    while True:
+        print("\n" + "=" * 50)
+        print("  📚 请选择要查看的文档")
+        print("=" * 50)
+
+        for i, doc in enumerate(rag_system.documents):
+            source = doc.metadata.get('source', '未知')
+            length = len(doc.page_content)
+            preview = doc.page_content.strip()[:30].replace('\n', ' ')
+            print(f"  {i+1}. [{source}] ({length}字符)")
+            print(f"     {preview}...")
+
+        print("\n  0. 返回上一级")
         print("-" * 40)
-        answer = invoke_rag(rag_chain, question)
-        print(f"回答: {answer}")
-        print()
+
+        choice = input("请选择 (0-{0}): ".format(len(rag_system.documents))).strip()
+
+        if choice == '0':
+            return
+
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(rag_system.documents):
+                show_document_detail(idx)
+            else:
+                print("⚠️ 无效选项，请重新选择")
+        except ValueError:
+            print("⚠️ 请输入数字")
 
 
-def demo_retrieval_strategies():
-    """演示不同的检索策略"""
-    print_section("检索策略对比演示")
+def show_document_detail(index: int):
+    """显示单个文档的详细内容"""
+    doc = rag_system.documents[index]
+    source = doc.metadata.get('source', '未知')
 
-    # 加载数据并创建向量存储
-    documents = load_sample_data()
-    chunks = split_by_recursive(documents, chunk_size=300, chunk_overlap=50)
-    vectorstore = create_vectorstore(chunks, persist_directory=None)
-    model = get_model()
-
-    # 测试查询
-    query = "RAG 如何提升 LLM 的能力？"
-
-    # 1. Similarity 检索
-    print("\n1. Similarity 检索 (相似度优先):")
-    retriever_sim = create_retriever(vectorstore, search_type="similarity", k=2)
-    docs_sim = retriever_sim.invoke(query)
-    for i, doc in enumerate(docs_sim):
-        print(f"  结果 {i+1}: {doc.page_content[:60].strip()}...")
-
-    # 2. MMR 检索
-    print("\n2. MMR 检索 (多样性优先):")
-    retriever_mmr = create_retriever(vectorstore, search_type="mmr", k=2, fetch_k=5)
-    docs_mmr = retriever_mmr.invoke(query)
-    for i, doc in enumerate(docs_mmr):
-        print(f"  结果 {i+1}: {doc.page_content[:60].strip()}...")
-
-    # 3. Threshold 检索
-    print("\n3. Threshold 检索 (相似度阈值):")
-    retriever_thresh = create_retriever(
-        vectorstore, search_type="similarity_score_threshold", k=3, score_threshold=0.3
-    )
-    docs_thresh = retriever_thresh.invoke(query)
-    for i, doc in enumerate(docs_thresh):
-        print(f"  结果 {i+1}: {doc.page_content[:60].strip()}...")
+    print("\n" + "=" * 50)
+    print(f"  📄 {source}")
+    print("=" * 50)
+    print(doc.page_content.strip())
+    print("\n" + "-" * 40)
+    input("按回车键返回文档列表...")
 
 
-def demo_streaming():
-    """演示流式输出"""
-    print_section("流式输出演示")
+def show_chunk_list():
+    """显示分块列表供用户选择"""
+    rag_system.ensure_init()
 
-    # 加载数据并创建向量存储
-    documents = load_sample_data()
-    chunks = split_by_recursive(documents, chunk_size=300, chunk_overlap=50)
-    vectorstore = create_vectorstore(chunks, persist_directory=None)
-    model = get_model()
-    retriever = create_retriever(vectorstore, k=2)
+    while True:
+        print("\n" + "=" * 50)
+        print("  📦 请选择要查看的分块")
+        print("=" * 50)
 
-    # 创建支持流式的 RAG 链
-    from langchain_core.runnables import RunnableParallel
-    from langchain_core.output_parsers import StrOutputParser
-    from langchain_core.prompts import PromptTemplate
+        for i, chunk in enumerate(rag_system.chunks):
+            source = chunk.metadata.get('source', '未知')
+            preview = chunk.page_content.strip()[:40].replace('\n', ' ')
+            print(f"  {i+1}. [{source}] {preview}...")
 
-    prompt = PromptTemplate.from_template(
-        "基于以下上下文回答问题。\n\n"
-        "上下文：\n{context}\n\n"
-        "问题：{question}\n\n"
-        "回答："
-    )
+        print("\n  0. 返回上一级")
+        print("-" * 40)
 
-    def format_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
+        choice = input("请选择 (0-{0}): ".format(len(rag_system.chunks))).strip()
 
-    rag_chain = (
-        RunnableParallel(
-            context=retriever | format_docs,
-            question=lambda x: x["question"],
-        )
-        | prompt
-        | model
-        | StrOutputParser()
-    )
+        if choice == '0':
+            return
 
-    question = "LangChain 的 RAG 组件有哪些？"
-    print(f"\n问题: {question}")
-    print("回答 (流式输出): ")
-    print("-" * 40)
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(rag_system.chunks):
+                show_chunk_detail(idx)
+            else:
+                print("⚠️ 无效选项，请重新选择")
+        except ValueError:
+            print("⚠️ 请输入数字")
 
-    # 流式输出
-    for chunk in rag_chain.stream({"question": question}):
-        print(chunk, end="", flush=True)
 
-    print("\n")
+def show_chunk_detail(index: int):
+    """显示单个分块的详细内容"""
+    chunk = rag_system.chunks[index]
+    source = chunk.metadata.get('source', '未知')
+
+    print("\n" + "=" * 50)
+    print(f"  📦 片段 {index+1} - {source}")
+    print("=" * 50)
+    print(chunk.page_content.strip())
+    print("\n" + "-" * 40)
+    input("按回车键返回分块列表...")
+
+
+def get_recommended_questions() -> list:
+    """根据知识库生成推荐问题"""
+    recommendations = []
+    sources = set(doc.metadata.get('source', '') for doc in rag_system.documents)
+
+    if 'home_cooking.txt' in sources:
+        recommendations.extend([
+            "红烧肉怎么做？",
+            "番茄炒蛋有什么技巧？",
+        ])
+
+    if 'breakfast.txt' in sources:
+        recommendations.extend([
+            "早餐吃什么好？",
+            "一周早餐不重样",
+        ])
+
+    if 'beginner_cooking.txt' in sources:
+        recommendations.extend([
+            "新手学什么菜简单？",
+            "懒人做什么菜快？",
+        ])
+
+    return recommendations[:4]
+
+
+def interactive问答():
+    """交互式问答"""
+    rag_system.ensure_init()
+
+    print("\n" + "=" * 50)
+    print("  🎯 交互式问答")
+    print("=" * 50)
+
+    # 显示推荐问题
+    recommendations = get_recommended_questions()
+    print("\n💡 你可以问我一些问题，例如：")
+    for i, q in enumerate(recommendations, 1):
+        print(f"   {i}. {q}")
+
+    print("\n" + "-" * 30)
+    print("输入问题进行咨询（输入 q 退出）")
+
+    while True:
+        question = input("\n👤 你: ").strip()
+
+        if not question:
+            continue
+
+        if question.lower() in ['q', 'quit', 'exit', '退出']:
+            print("\n👋 再见!")
+            break
+
+        print("\n🤖 AI: ", end="", flush=True)
+
+        try:
+            docs = rag_system.retriever.invoke(question)
+
+            for chunk in rag_system.rag_chain.stream({"question": question}):
+                print(chunk, end="", flush=True)
+
+            if docs:
+                print("\n\n📖 引用来源:")
+                for i, doc in enumerate(docs, 1):
+                    source = doc.metadata.get('source', '未知')
+                    content = doc.page_content.strip()[:80]
+                    print(f"  {i}. [{source}] {content}...")
+
+        except Exception as e:
+            print(f"\n❌ 抱歉，出错了: {e}")
+
+
+def show_menu():
+    """显示菜单"""
+    print("\n" + "=" * 50)
+    print("  🌟 LangChain RAG 演示")
+    print("=" * 50)
+    print("""
+请选择操作：
+  1. 📚 查看原始文档
+  2. 📦 查看分块数据
+  3. 💬 开始问答
+  4. 🚪 退出
+""")
+    return input("请输入选项 (1-4): ").strip()
 
 
 def main():
     """主函数"""
-    print("\n" + "=" * 60)
-    print("  LangChain RAG 演示")
-    print("  什么是 RAG？如何使用 LangChain 实现 RAG？")
-    print("=" * 60)
-
     # 检查环境变量
     if not os.getenv("DEEPSEEK_API_KEY") and not os.getenv("OPENAI_API_KEY"):
-        print("\n⚠️  警告: 未检测到 API Key!")
-        print("请在 .env 文件中配置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY")
-        print("参考 .env.example 文件创建配置文件")
-        print("\n继续演示（可能会失败）...")
+        print("\n⚠️  请先在 .env 文件中配置 API Key")
+        print("   参考 .env.example 文件")
+        return
 
-    # 运行演示
-    try:
-        # 1. 基本 RAG 流程
-        demo_basic_rag()
+    # 主循环 - 初始不加载模型
+    while True:
+        choice = show_menu()
 
-        # 2. 检索策略对比
-        demo_retrieval_strategies()
-
-        # 3. 流式输出
-        demo_streaming()
-
-        print("\n" + "=" * 60)
-        print("  演示完成！")
-        print("=" * 60)
-
-    except Exception as e:
-        print(f"\n❌ 错误: {e}")
-        print("\n请检查:")
-        print("1. .env 文件中的 API Key 是否正确")
-        print("2. 网络连接是否正常")
-        print("3. 依赖是否正确安装 (uv sync)")
+        if choice == '1':
+            show_document_list()
+        elif choice == '2':
+            show_chunk_list()
+        elif choice == '3':
+            interactive问答()
+        elif choice == '4' or choice.lower() in ['q', 'quit', 'exit']:
+            print("\n👋 再见!")
+            break
+        else:
+            print("\n⚠️  无效选项，请重新选择")
 
 
 if __name__ == "__main__":

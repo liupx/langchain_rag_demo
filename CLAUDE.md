@@ -75,10 +75,10 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 ## 入口文件
 
-- [main.py](main.py) - 主演示文件，包含 3 个部分：
-  1. `demo_basic_rag()` - 完整 RAG 流程演示
-  2. `demo_retrieval_strategies()` - 检索策略对比
-  3. `demo_streaming()` - 流式输出演示
+- [main.py](main.py) - 交互式演示程序：
+  - 按需初始化（启动快，首次使用时才加载模型）
+  - 分级查看文档（先列表再详情）
+  - 交互式问答 + 推荐问题 + 引用来源显示
 
 ## 检索策略
 
@@ -95,7 +95,9 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 ## 示例数据
 
-项目内置示例数据，通过 [loader.py](src/agent/loader.py) 中的 `load_sample_data()` 加载，作为 RAG 演示的知识库。
+项目内置**家常菜谱**知识库（红烧肉、番茄炒蛋、早餐推荐、新手菜谱），通过 [loader.py](src/agent/loader.py) 中的 `load_sample_data()` 加载。
+
+默认使用中文 embedding 模型 `BAAI/bge-small-zh-v1.5`，对中文检索效果更好。
 
 ## 关键知识点
 

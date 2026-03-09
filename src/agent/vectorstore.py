@@ -81,9 +81,10 @@ def get_embeddings():
         )
 
     # 回退到 HuggingFace（免费，无需 API Key）
+    # 使用中文优化模型 bge-small-zh，对中文检索效果更好
     if HF_EMBEDDINGS_AVAILABLE:
         embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_name="BAAI/bge-small-zh-v1.5",
         )
         # 包装一层以处理 dict 输入
         return WrappedHuggingFaceEmbeddings(embeddings)
