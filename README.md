@@ -242,11 +242,12 @@ answer = invoke_rag(rag_chain, "什么是 RAG？")
 
 1. **入门**：运行 `main.py`，观察输出，理解 RAG 流程
 2. **阅读代码**：查看 `src/agent/` 下的模块，理解每个组件的作用
-3. **动手实践**：
+3. **深入理解**：阅读 [代码详解文档](docs/code-analysis.md)，了解每个模块的原理
+4. **动手实践**：
    - 替换为自己的文档
    - 调整分块大小
    - 尝试不同检索策略
-4. **进阶**：将 RAG 集成到 Agent 中，实现知识问答 Agent
+5. **进阶**：将 RAG 集成到 Agent 中，实现知识问答 Agent
 
 ## License
 
