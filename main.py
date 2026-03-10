@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.agent.llm import get_model
-from src.agent.loader import load_sample_data
+from src.agent.loader import load_sample_data, list_sample_files, get_data_dir, init_sample_data, SAMPLE_DOCUMENTS
 from src.agent.splitter import split_by_recursive
 from src.agent.vectorstore import create_vectorstore
 from src.agent.retriever import create_retriever
@@ -103,48 +103,66 @@ def init_rag_system():
 
 
 def show_document_list():
-    """显示文档列表供用户选择"""
-    rag_system.ensure_init()
+    """显示文档列表供用户选择（无需初始化）"""
 
     while True:
+        files = list_sample_files()
+
+        if not files:
+            print("\n⚠️ data 目录下没有文档")
+            print(f"请在 {get_data_dir()} 目录下添加文档")
+            input("\n按回车键返回...")
+            return
+
         print("\n" + "=" * 50)
         print("  📚 请选择要查看的文档")
+        print(f"  (文档目录: {get_data_dir()})")
         print("=" * 50)
 
-        for i, doc in enumerate(rag_system.documents):
-            source = doc.metadata.get('source', '未知')
-            length = len(doc.page_content)
-            preview = doc.page_content.strip()[:30].replace('\n', ' ')
-            print(f"  {i+1}. [{source}] ({length}字符)")
-            print(f"     {preview}...")
+        for i, filename in enumerate(files):
+            print(f"  {i+1}. {filename}")
 
         print("\n  0. 返回上一级")
         print("-" * 40)
 
-        choice = input("请选择 (0-{0}): ".format(len(rag_system.documents))).strip()
+        choice = input("请选择 (0-{0}): ".format(len(files))).strip()
 
         if choice == '0':
             return
 
         try:
             idx = int(choice) - 1
-            if 0 <= idx < len(rag_system.documents):
-                show_document_detail(idx)
+            if 0 <= idx < len(files):
+                show_document_detail(files[idx])
             else:
                 print("⚠️ 无效选项，请重新选择")
         except ValueError:
             print("⚠️ 请输入数字")
 
 
-def show_document_detail(index: int):
+def show_document_detail(filename: str):
     """显示单个文档的详细内容"""
-    doc = rag_system.documents[index]
-    source = doc.metadata.get('source', '未知')
+    from src.agent.loader import get_document_loader
 
-    print("\n" + "=" * 50)
-    print(f"  📄 {source}")
-    print("=" * 50)
-    print(doc.page_content.strip())
+    data_dir = get_data_dir()
+    file_path = data_dir / filename
+
+    try:
+        docs = get_document_loader(str(file_path))
+        doc = docs[0] if docs else None
+
+        if not doc:
+            print(f"\n⚠️ 无法读取文件: {filename}")
+            return
+
+        print("\n" + "=" * 50)
+        print(f"  📄 {filename}")
+        print("=" * 50)
+        print(doc.page_content.strip())
+
+    except Exception as e:
+        print(f"\n❌ 读取文件失败: {e}")
+
     print("\n" + "-" * 40)
     input("按回车键返回文档列表...")
 
@@ -235,7 +253,7 @@ def interactive问答():
         print(f"   {i}. {q}")
 
     print("\n" + "-" * 30)
-    print("输入问题进行咨询（输入 q 退出）")
+    print("输入问题进行咨询（输入 q/退出/再见/bye 返回主菜单）")
 
     while True:
         question = input("\n👤 你: ").strip()
@@ -243,8 +261,9 @@ def interactive问答():
         if not question:
             continue
 
-        if question.lower() in ['q', 'quit', 'exit', '退出']:
-            print("\n👋 再见!")
+        # 返回主菜单的关键词
+        if question.lower() in ['q', 'quit', 'exit', '退出', '再见', 'bye', '拜拜', 'return', 'back']:
+            print("\n↩️  返回主菜单")
             break
 
         print("\n🤖 AI: ", end="", flush=True)
@@ -281,12 +300,60 @@ def show_menu():
     return input("请输入选项 (1-4): ").strip()
 
 
+def check_and_init_data() -> bool:
+    """
+    检查 data 目录状态，必要时引导用户初始化
+
+    Returns:
+        True: 用户选择继续（有文档可用）
+        False: 用户选择退出
+    """
+    data_dir = get_data_dir()
+    files = list_sample_files() if data_dir.exists() else []
+
+    # 如果 data 目录不存在或为空，引导用户
+    if not files:
+        print("\n" + "=" * 50)
+        print("  📂 首次运行 - 数据初始化")
+        print("=" * 50)
+        print(f"\n数据目录: {data_dir}")
+        print("\n目前没有找到文档，请选择：")
+        print(f"  1. 使用示例文档（{len(SAMPLE_DOCUMENTS)} 个菜谱）")
+        print("  2. 退出后自己创建文档")
+        print("\n" + "-" * 40)
+
+        while True:
+            choice = input("请选择 (1-2): ").strip()
+            if choice == '1':
+                print("\n正在创建示例文档...")
+                try:
+                    docs = init_sample_data()
+                    print(f"✅ 已创建 {len(docs)} 个示例文档")
+                    return True
+                except Exception as e:
+                    print(f"❌ 创建示例文档失败: {e}")
+                    return False
+            elif choice == '2':
+                print(f"\n请在 {data_dir} 目录下创建文档")
+                print("支持格式: .txt, .md, .pdf")
+                input("\n按回车键退出...")
+                return False
+            else:
+                print("⚠️ 请输入 1 或 2")
+
+    return True
+
+
 def main():
     """主函数"""
     # 检查环境变量
     if not os.getenv("DEEPSEEK_API_KEY") and not os.getenv("OPENAI_API_KEY"):
         print("\n⚠️  请先在 .env 文件中配置 API Key")
         print("   参考 .env.example 文件")
+        return
+
+    # 检查并初始化数据目录
+    if not check_and_init_data():
         return
 
     # 主循环 - 初始不加载模型

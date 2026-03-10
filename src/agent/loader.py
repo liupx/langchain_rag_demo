@@ -12,16 +12,42 @@ from typing import List, Optional
 from langchain_core.documents import Document
 
 # 尝试导入 LangChain 文档加载器
+LOADER_AVAILABLE = False
+TextLoader = None
+MarkdownLoader = None
+PyPDFLoader = None
+DirectoryLoader = None
+
 try:
-    from langchain_community.document_loaders import (
-        TextLoader,
-        MarkdownLoader,
-        PyPDFLoader,
-        DirectoryLoader,
-    )
-    LOADER_AVAILABLE = True
+    from langchain_community.document_loaders import TextLoader
 except ImportError:
-    LOADER_AVAILABLE = False
+    pass
+
+try:
+    from langchain_community.document_loaders import PyPDFLoader
+except ImportError:
+    pass
+
+# DirectoryLoader 和 MarkdownLoader 可能在某些版本中不可用
+try:
+    from langchain_community.document_loaders import DirectoryLoader
+except ImportError:
+    pass
+
+try:
+    from langchain_community.document_loaders import MarkdownLoader
+except ImportError:
+    pass
+
+# 只要有基本的加载器就标记为可用
+if TextLoader is not None or PyPDFLoader is not None:
+    LOADER_AVAILABLE = True
+
+
+def get_data_dir() -> Path:
+    """获取 data 目录路径"""
+    # 从 src/agent/loader.py 往上三级到项目根目录
+    return Path(__file__).parent.parent.parent / "data"
 
 
 def load_text_file(file_path: str, encoding: str = "utf-8") -> List[Document]:
@@ -74,45 +100,28 @@ def get_document_loader(file_path: str) -> List[Document]:
         return load_text_file(file_path)
 
 
-def load_sample_data() -> List[Document]:
-    """加载示例数据 - 家常菜谱"""
-    sample_docs = [
-        Document(
-            page_content="""
-家常美味菜谱，简单易学
+# 示例文档内容 - 克隆项目后首次运行时会自动创建
+SAMPLE_DOCUMENTS = {
+    "home_cooking.txt": """家常菜做法
 
-红烧肉做法：
-1. 五花肉切块，冷水下锅加料酒姜片焯水
-2. 炒糖色：冰糖小火炒化，放入肉块翻炒上色
-3. 加调料：生抽、老抽、料酒、八角、桂皮、香叶
-4. 加开水没过肉块，小火炖1小时
-5. 大火收汁，加盐调味
+红烧肉：
+- 五花肉切块焯水
+- 冰糖炒糖色
+- 加八角、桂皮、香叶
+- 加生抽、老抽、料酒
+- 小火炖1小时
 
-小技巧：
-- 选肥瘦相间的五花肉
-- 炒糖色要小火，防止发苦
-- 炖的时候加热水，不要加冷水
-
-番茄炒蛋做法：
-1. 番茄切块，鸡蛋打散加一点盐
-2. 鸡蛋下锅炒到半熟盛出
-3. 番茄下锅炒出汁水
-4. 加入鸡蛋一起翻炒
-5. 加盐、糖调味，出锅前撒葱花
-
-小技巧：
-- 番茄用开水烫一下好剥皮
-- 炒鸡蛋时油要热，鸡蛋才嫩
-- 加一点点糖可以中和酸味
-            """,
-            metadata={"source": "home_cooking.txt", "topic": "recipe"},
-        ),
-        Document(
-            page_content="""
-早餐吃什么？一周不重样
+番茄炒蛋：
+- 番茄切块，鸡蛋打散
+- 先炒鸡蛋盛出
+- 再炒番茄加盐糖
+- 最后放入鸡蛋翻炒
+- 出锅前撒葱花
+""",
+    "breakfast.txt": """早餐吃什么？一周不重样
 
 周一：鸡蛋三明治
-- 吐司夹煎蛋、火腿、生菜
+- 吐司夹煎蛋，火腿、生菜
 - 配一杯牛奶或豆浆
 - 10分钟搞定
 
@@ -141,12 +150,8 @@ def load_sample_data() -> List[Document]:
 - 手抓饼加鸡蛋培根
 - 沙拉配全麦面包
 - 水果酸奶麦片
-            """,
-            metadata={"source": "breakfast.txt", "topic": "recipe"},
-        ),
-        Document(
-            page_content="""
-新手入门家常菜，这些一定要会
+""",
+    "beginner_cooking.txt": """新手入门家常菜，这些一定要会
 
 懒人必备快手菜：
 1. 蒜蓉西兰花
@@ -175,8 +180,81 @@ def load_sample_data() -> List[Document]:
 - 刨丝器：土豆丝神器
 - 定时器：防止煮过头
 - 案板：生熟分开
-            """,
-            metadata={"source": "beginner_cooking.txt", "topic": "recipe"},
-        ),
-    ]
-    return sample_docs
+"""
+}
+
+
+def ensure_data_dir(exist_ok: bool = False) -> Path:
+    """确保 data 目录存在，如不存在则创建"""
+    data_dir = get_data_dir()
+    if not data_dir.exists():
+        data_dir.mkdir(parents=True, exist_ok=True)
+        print(f"✅ 已创建数据目录: {data_dir}")
+    return data_dir
+
+
+def init_sample_data() -> List[Document]:
+    """
+    初始化示例文档到 data 目录
+
+    Returns:
+        Document 列表
+    """
+    data_dir = ensure_data_dir()
+
+    # 写入示例文档
+    for filename, content in SAMPLE_DOCUMENTS.items():
+        file_path = data_dir / filename
+        if not file_path.exists():
+            file_path.write_text(content, encoding="utf-8")
+            print(f"   已创建示例文档: {filename}")
+
+    return load_sample_data()
+
+
+def load_sample_data() -> List[Document]:
+    """
+    加载 data 目录下的所有文档作为示例
+
+    支持的文件格式：.txt, .md, .pdf
+
+    Returns:
+        Document 列表
+    """
+    data_dir = get_data_dir()
+
+    if not data_dir.exists():
+        raise FileNotFoundError(f"data 目录不存在: {data_dir}")
+
+    # 支持的文件类型
+    supported_extensions = ["*.txt", "*.md", "*.pdf"]
+    documents = []
+
+    for ext in supported_extensions:
+        for file_path in data_dir.glob(ext):
+            try:
+                docs = get_document_loader(str(file_path))
+                for doc in docs:
+                    # 确保 metadata 包含文件名
+                    doc.metadata["source"] = file_path.name
+                documents.extend(docs)
+            except Exception as e:
+                print(f"警告：加载文件 {file_path} 失败: {e}")
+
+    if not documents:
+        raise FileNotFoundError(f"data 目录下没有找到文档: {data_dir}")
+
+    return documents
+
+
+def list_sample_files() -> List[str]:
+    """列出 data 目录下的所有文档文件"""
+    data_dir = get_data_dir()
+    if not data_dir.exists():
+        return []
+
+    files = []
+    for ext in ["*.txt", "*.md", "*.pdf"]:
+        files.extend([f.name for f in data_dir.glob(ext)])
+
+    return sorted(files)
