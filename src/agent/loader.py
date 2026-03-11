@@ -44,10 +44,23 @@ if TextLoader is not None or PyPDFLoader is not None:
     LOADER_AVAILABLE = True
 
 
+def find_project_root(start: Path | None = None) -> Path:
+    """从起始目录向上查找项目根目录（包含 pyproject.toml 或 .git）"""
+    current = (start or Path(__file__)).resolve()
+
+    # 向上遍历直到找到项目根目录标记
+    while current != current.parent:
+        if (current / "pyproject.toml").exists() or (current / ".git").exists():
+            return current
+        current = current.parent
+
+    # 没找到则返回 pyproject.toml 所在目录或当前工作目录
+    return Path.cwd()
+
+
 def get_data_dir() -> Path:
     """获取 data 目录路径"""
-    # 从 src/agent/loader.py 往上三级到项目根目录
-    return Path(__file__).parent.parent.parent / "data"
+    return find_project_root() / "data"
 
 
 def load_text_file(file_path: str, encoding: str = "utf-8") -> List[Document]:
